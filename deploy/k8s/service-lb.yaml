@@ -1,0 +1,32 @@
+# 对外访问用的公网 LoadBalancer Service（百度 CCE BLB + 自动绑定公网 EIP）。
+# 与内网 ClusterIP service.yaml 并存：litellm 走内网 ClusterIP，外部访问走这个公网 LB。
+#
+# ⚠️ 安全：此 Service 把 sub2api 后台登录页和 /v1 API 直接暴露到公网。
+#    确保管理员密码强壮，并尽快在后台配置访问控制 / CORS。
+#
+# CCE 行为：LoadBalancer 类型默认自动创建 BLB 并绑定弹性公网 EIP。
+#   - 不设 internal-vpc（即公网）；subnet-id 用节点所在子网。
+#   - EIP 带宽/计费按需通过 eip-* 注解调整，未设则用账号默认。
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api-lb
+  namespace: sub2api
+  labels:
+    app.kubernetes.io/name: sub2api
+  annotations:
+    service.beta.kubernetes.io/cce-blb-type: appblb
+    service.beta.kubernetes.io/cce-load-balancer-backend-type: eni
+    service.beta.kubernetes.io/cce-load-balancer-subnet-id: "sbn-0penphkqzqsi"
+    # 公网 EIP：按流量计费，带宽上限 100 Mbps（按需改）
+    service.beta.kubernetes.io/cce-elastic-ip-payment-timing: "Postpaid"
+    service.beta.kubernetes.io/cce-elastic-ip-billing-method: "ByTraffic"
+    service.beta.kubernetes.io/cce-elastic-ip-bandwidth-in-mbps: "100"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: sub2api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

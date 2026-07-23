@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sub2api
+  namespace: sub2api
+  labels:
+    app.kubernetes.io/name: sub2api
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sub2api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sub2api
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+        - name: vast-secret
+      terminationGracePeriodSeconds: 60
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: sub2api
+      containers:
+        - name: sub2api
+          # 占位符：make deploy 时被替换为 BCR VPC 地址 + 版本标签
+          image: ccr-23gxup9u-pub.cnc.bj.baidubce.com/tripo/sub2api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 10
+          # 敏感凭证（DB / Redis / 密钥 / 管理员）来自 Secret
+          envFrom:
+            - secretRef:
+                name: sub2api-env
+          # 非敏感运行时配置，直接内联
+          env:
+            - name: AUTO_SETUP
+              value: "true"
+            - name: SERVER_HOST
+              value: 0.0.0.0
+            - name: SERVER_PORT
+              value: "8080"
+            - name: SERVER_MODE
+              value: release
+            - name: RUN_MODE
+              value: standard
+            - name: TZ
+              value: Asia/Shanghai
+            - name: JWT_EXPIRE_HOUR
+              value: "24"
+            # RDS role sub2api 有连接数上限：按 副本数 × MAX_OPEN 控制总连接。
+            # 2 副本 × 8 = 16；HPA 扩到 6 副本时 6 × 8 = 48，按 RDS 上限调整。
+            - name: DATABASE_MAX_OPEN_CONNS
+              value: "8"
+            - name: DATABASE_MAX_IDLE_CONNS
+              value: "2"
+            - name: DATABASE_CONN_MAX_LIFETIME_MINUTES
+              value: "30"
+            - name: DATABASE_CONN_MAX_IDLE_TIME_MINUTES
+              value: "5"
+            - name: REDIS_POOL_SIZE
+              value: "1024"
+            - name: REDIS_MIN_IDLE_CONNS
+              value: "10"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 18
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi

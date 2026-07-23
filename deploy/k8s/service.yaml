@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sub2api
+  namespace: sub2api
+  labels:
+    app.kubernetes.io/name: sub2api
+spec:
+  # 仅供集群内访问（litellm-relay 通过内网 DNS 调用）；不暴露公网。
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: sub2api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

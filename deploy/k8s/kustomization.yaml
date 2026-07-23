@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# namespace.yaml 不纳入：目标集群的 sub2api namespace 已由集群管理员预建，
+# 当前部署用户无 cluster-scope 建 namespace 权限。需要新建时单独 apply。
+resources:
+  - deployment.yaml
+  - service.yaml
+  - service-lb.yaml
+  - horizontal-pod-autoscaler.yaml

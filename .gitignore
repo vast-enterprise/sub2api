@@ -142,3 +142,10 @@ docs/*
 frontend/coverage/
 aicodex
 output/
+
+# k8s / litellm 部署凭据与本地数据 —— 绝不提交
+.conf_k8s
+.conf_k8s_public
+*.kubeconfig
+deploy/litellm/.env.litellm
+deploy/litellm/db_data/
