@@ -11,6 +11,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/redis/go-redis/v9"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/oauthsession"
 )
 
 // OpenAI OAuth Constants (from CRS project - Codex CLI client)
@@ -49,15 +53,21 @@ type OAuthSession struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// SessionStore manages OAuth sessions in memory
+// redisSessionKeyPrefix namespaces OpenAI OAuth session keys in Redis.
+const redisSessionKeyPrefix = "oauth:session:openai:"
+
+// SessionStore manages OAuth sessions. When backed by Redis (multi-replica
+// deployments), sessions are shared across pods; otherwise it falls back to an
+// in-process map.
 type SessionStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*OAuthSession
 	stopOnce sync.Once
 	stopCh   chan struct{}
+	backend  *oauthsession.RedisBackend // nil => in-memory
 }
 
-// NewSessionStore creates a new session store
+// NewSessionStore creates a new in-memory session store.
 func NewSessionStore() *SessionStore {
 	store := &SessionStore{
 		sessions: make(map[string]*OAuthSession),
@@ -68,8 +78,18 @@ func NewSessionStore() *SessionStore {
 	return store
 }
 
+// SetRedisBackend switches the store to Redis-backed storage. Passing a nil
+// client is a no-op and leaves the store in-memory.
+func (s *SessionStore) SetRedisBackend(rdb *redis.Client) {
+	s.backend = oauthsession.NewRedisBackend(rdb, redisSessionKeyPrefix, SessionTTL)
+}
+
 // Set stores a session
 func (s *SessionStore) Set(sessionID string, session *OAuthSession) {
+	if s.backend != nil {
+		s.backend.Set(sessionID, session)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[sessionID] = session
@@ -77,6 +97,13 @@ func (s *SessionStore) Set(sessionID string, session *OAuthSession) {
 
 // Get retrieves a session
 func (s *SessionStore) Get(sessionID string) (*OAuthSession, bool) {
+	if s.backend != nil {
+		var session OAuthSession
+		if !s.backend.Get(sessionID, &session) {
+			return nil, false
+		}
+		return &session, true
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	session, ok := s.sessions[sessionID]
@@ -92,6 +119,10 @@ func (s *SessionStore) Get(sessionID string) (*OAuthSession, bool) {
 
 // Delete removes a session
 func (s *SessionStore) Delete(sessionID string) {
+	if s.backend != nil {
+		s.backend.Delete(sessionID)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.sessions, sessionID)

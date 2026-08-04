@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
@@ -78,6 +80,12 @@ func NewGeminiOAuthService(
 		driveClient:  driveClient,
 		cfg:          cfg,
 	}
+}
+
+// SetRedisSessionBackend 让 OAuth 会话改由 Redis 存储，以便在多副本部署下跨 Pod 共享。
+// 传入 nil 时保持进程内存储。
+func (s *GeminiOAuthService) SetRedisSessionBackend(rdb *redis.Client) {
+	s.sessionStore.SetRedisBackend(rdb)
 }
 
 func (s *GeminiOAuthService) GetOAuthConfig() *GeminiOAuthCapabilities {

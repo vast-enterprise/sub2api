@@ -6,6 +6,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -53,6 +55,12 @@ func NewOAuthService(proxyRepo ProxyRepository, oauthClient ClaudeOAuthClient) *
 		proxyRepo:    proxyRepo,
 		oauthClient:  oauthClient,
 	}
+}
+
+// SetRedisSessionBackend 让 OAuth 会话改由 Redis 存储，以便在多副本部署下跨 Pod 共享。
+// 传入 nil 时保持进程内存储。
+func (s *OAuthService) SetRedisSessionBackend(rdb *redis.Client) {
+	s.sessionStore.SetRedisBackend(rdb)
 }
 
 // GenerateAuthURLResult contains the authorization URL and session info

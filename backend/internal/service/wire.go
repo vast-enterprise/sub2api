@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -56,13 +57,51 @@ func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo Acco
 }
 
 // ProvideOpenAIOAuthService creates OpenAIOAuthService with privacy/account enrichment support.
+// OAuth sessions are backed by Redis so the authorize/exchange steps work across replicas.
 func ProvideOpenAIOAuthService(
 	proxyRepo ProxyRepository,
 	oauthClient OpenAIOAuthClient,
 	privacyClientFactory PrivacyClientFactory,
+	rdb *redis.Client,
 ) *OpenAIOAuthService {
 	svc := NewOpenAIOAuthService(proxyRepo, oauthClient)
 	svc.SetPrivacyClientFactory(privacyClientFactory)
+	svc.SetRedisSessionBackend(rdb)
+	return svc
+}
+
+// ProvideOAuthService creates the Claude OAuthService with Redis-backed sessions.
+func ProvideOAuthService(proxyRepo ProxyRepository, oauthClient ClaudeOAuthClient, rdb *redis.Client) *OAuthService {
+	svc := NewOAuthService(proxyRepo, oauthClient)
+	svc.SetRedisSessionBackend(rdb)
+	return svc
+}
+
+// ProvideGrokOAuthService creates the Grok OAuthService with Redis-backed sessions.
+func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, rdb *redis.Client) *GrokOAuthService {
+	svc := NewGrokOAuthService(proxyRepo, oauthClient)
+	svc.SetRedisSessionBackend(rdb)
+	return svc
+}
+
+// ProvideGeminiOAuthService creates the Gemini OAuthService with Redis-backed sessions.
+func ProvideGeminiOAuthService(
+	proxyRepo ProxyRepository,
+	oauthClient GeminiOAuthClient,
+	codeAssist GeminiCliCodeAssistClient,
+	driveClient geminicli.DriveClient,
+	cfg *config.Config,
+	rdb *redis.Client,
+) *GeminiOAuthService {
+	svc := NewGeminiOAuthService(proxyRepo, oauthClient, codeAssist, driveClient, cfg)
+	svc.SetRedisSessionBackend(rdb)
+	return svc
+}
+
+// ProvideAntigravityOAuthService creates the Antigravity OAuthService with Redis-backed sessions.
+func ProvideAntigravityOAuthService(proxyRepo ProxyRepository, rdb *redis.Client) *AntigravityOAuthService {
+	svc := NewAntigravityOAuthService(proxyRepo)
+	svc.SetRedisSessionBackend(rdb)
 	return svc
 }
 
@@ -643,14 +682,14 @@ var ProviderSet = wire.NewSet(
 	ProvideBatchImageCleanupService,
 	ProvideBatchImageWorkerRuntime,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
-	NewOAuthService,
+	ProvideOAuthService,
 	ProvideOpenAIOAuthService,
-	NewGrokOAuthService,
-	NewGeminiOAuthService,
+	ProvideGrokOAuthService,
+	ProvideGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,
 	wire.Bind(new(TokenCacheInvalidator), new(*CompositeTokenCacheInvalidator)),
-	NewAntigravityOAuthService,
+	ProvideAntigravityOAuthService,
 	ProvideOAuthRefreshAPI,
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,

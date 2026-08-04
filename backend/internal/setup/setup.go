@@ -29,6 +29,14 @@ const (
 	defaultUserConcurrency     = 5
 	simpleModeAdminConcurrency = 30
 	defaultMigrationTimeout    = 60 * time.Second
+
+	// 启动阶段 DB 探测的默认单次超时与重试次数。共享 RDS 偶发抖动/主备切换时，
+	// 单次探测在几秒内失败不应直接打崩 pod（进程退出 → crashloop → 泄漏并发槽 → 429）。
+	// 通过重试给实例几秒恢复窗口。可用 SETUP_DB_PROBE_TIMEOUT_SECONDS /
+	// SETUP_DB_PROBE_RETRIES 覆盖。
+	defaultDBProbeTimeout = 15 * time.Second
+	defaultDBProbeRetries = 3
+	dbProbeRetryBackoff   = 2 * time.Second
 )
 
 func setupDefaultAdminConcurrency() int {
@@ -194,28 +202,33 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := db.PingContext(ctx); err != nil {
-		return fmt.Errorf("ping failed: %w", err)
-	}
-
-	// Check if target database exists
 	var exists bool
-	row := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", cfg.DBName)
-	if err := row.Scan(&exists); err != nil {
-		return fmt.Errorf("failed to check database existence: %w", err)
+	if err := withDBProbeRetry("bootstrap database existence", func(ctx context.Context, _ int) error {
+		if err := db.PingContext(ctx); err != nil {
+			return fmt.Errorf("ping failed: %w", err)
+		}
+		// Check if target database exists
+		row := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", cfg.DBName)
+		if err := row.Scan(&exists); err != nil {
+			return fmt.Errorf("failed to check database existence: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	// Create database if not exists
 	if !exists {
-		// 注意：数据库名不能参数化，依赖前置输入校验保障安全。
-		// Note: Database names cannot be parameterized, but we've already validated cfg.DBName
-		// in the handler using validateDBName() which only allows [a-zA-Z][a-zA-Z0-9_]*
-		_, err := db.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", cfg.DBName))
-		if err != nil {
-			return fmt.Errorf("failed to create database '%s': %w", cfg.DBName, err)
+		if err := withDBProbeRetry("create database", func(ctx context.Context, _ int) error {
+			// 注意：数据库名不能参数化，依赖前置输入校验保障安全。
+			// Note: Database names cannot be parameterized, but we've already validated cfg.DBName
+			// in the handler using validateDBName() which only allows [a-zA-Z][a-zA-Z0-9_]*
+			if _, err := db.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", cfg.DBName)); err != nil {
+				return fmt.Errorf("failed to create database '%s': %w", cfg.DBName, err)
+			}
+			return nil
+		}); err != nil {
+			return err
 		}
 		logger.LegacyPrintf("setup", "Database '%s' created successfully", cfg.DBName)
 	}
@@ -237,11 +250,13 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 		}
 	}()
 
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel2()
-
-	if err := targetDB.PingContext(ctx2); err != nil {
-		return fmt.Errorf("ping target database failed: %w", err)
+	if err := withDBProbeRetry("ping target database", func(ctx context.Context, _ int) error {
+		if err := targetDB.PingContext(ctx); err != nil {
+			return fmt.Errorf("ping target database failed: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	return nil
@@ -382,16 +397,17 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 		}
 	}()
 
-	// 使用超时上下文避免安装流程因数据库异常而长时间阻塞。
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var totalUsers int64
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users").Scan(&totalUsers); err != nil {
-		return false, "", err
-	}
-	var adminUsers int64
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = $1", service.RoleAdmin).Scan(&adminUsers); err != nil {
+	// 使用带重试的超时探测，避免安装流程因数据库瞬时异常而直接失败退出。
+	var totalUsers, adminUsers int64
+	if err := withDBProbeRetry("count admin users", func(ctx context.Context, _ int) error {
+		if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users").Scan(&totalUsers); err != nil {
+			return err
+		}
+		if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = $1", service.RoleAdmin).Scan(&adminUsers); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return false, "", err
 	}
 	decision := decideAdminBootstrap(totalUsers, adminUsers)
@@ -423,20 +439,22 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 		return false, "", err
 	}
 
-	_, err = db.ExecContext(
-		ctx,
-		`INSERT INTO users (email, password_hash, role, balance, concurrency, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		admin.Email,
-		admin.PasswordHash,
-		admin.Role,
-		admin.Balance,
-		admin.Concurrency,
-		admin.Status,
-		admin.CreatedAt,
-		admin.UpdatedAt,
-	)
-	if err != nil {
+	if err := withDBProbeRetry("insert admin user", func(ctx context.Context, _ int) error {
+		_, execErr := db.ExecContext(
+			ctx,
+			`INSERT INTO users (email, password_hash, role, balance, concurrency, status, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			admin.Email,
+			admin.PasswordHash,
+			admin.Role,
+			admin.Balance,
+			admin.Concurrency,
+			admin.Status,
+			admin.CreatedAt,
+			admin.UpdatedAt,
+		)
+		return execErr
+	}); err != nil {
 		return false, "", err
 	}
 	return true, decision.reason, nil
@@ -543,6 +561,48 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+// dbProbeTimeout 返回单次启动 DB 探测的超时（可用 SETUP_DB_PROBE_TIMEOUT_SECONDS 覆盖）。
+func dbProbeTimeout() time.Duration {
+	if secs := getEnvIntOrDefault("SETUP_DB_PROBE_TIMEOUT_SECONDS", 0); secs > 0 {
+		return time.Duration(secs) * time.Second
+	}
+	return defaultDBProbeTimeout
+}
+
+// dbProbeRetries 返回启动 DB 探测的重试次数（可用 SETUP_DB_PROBE_RETRIES 覆盖，最小为 1）。
+func dbProbeRetries() int {
+	n := getEnvIntOrDefault("SETUP_DB_PROBE_RETRIES", defaultDBProbeRetries)
+	if n < 1 {
+		return 1
+	}
+	return n
+}
+
+// withDBProbeRetry 以「单次超时 + 固定退避重试」的方式运行一次启动阶段的 DB 探测。
+// probe 收到的 ctx 已带单次超时；attempt 从 1 起。全部尝试失败时返回最后一次错误。
+// 目的：共享 RDS 偶发抖动时给实例几秒恢复窗口，避免探测一失败就退出进程导致 crashloop。
+func withDBProbeRetry(label string, probe func(ctx context.Context, attempt int) error) error {
+	timeout := dbProbeTimeout()
+	retries := dbProbeRetries()
+
+	var lastErr error
+	for attempt := 1; attempt <= retries; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		err := probe(ctx, attempt)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if attempt < retries {
+			logger.LegacyPrintf("setup", "%s probe attempt %d/%d failed: %v; retrying in %s",
+				label, attempt, retries, err, dbProbeRetryBackoff)
+			time.Sleep(dbProbeRetryBackoff)
+		}
+	}
+	return lastErr
 }
 
 // AutoSetupFromEnv performs automatic setup using environment variables

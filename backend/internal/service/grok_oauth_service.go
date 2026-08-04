@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
@@ -26,6 +28,12 @@ func NewGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient)
 		proxyRepo:    proxyRepo,
 		oauthClient:  oauthClient,
 	}
+}
+
+// SetRedisSessionBackend 让 OAuth 会话改由 Redis 存储，以便在多副本部署下跨 Pod 共享。
+// 传入 nil 时保持进程内存储。
+func (s *GrokOAuthService) SetRedisSessionBackend(rdb *redis.Client) {
+	s.sessionStore.SetRedisBackend(rdb)
 }
 
 type GrokAuthURLResult struct {

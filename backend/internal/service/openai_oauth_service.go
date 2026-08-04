@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
@@ -33,6 +35,12 @@ func NewOpenAIOAuthService(proxyRepo ProxyRepository, oauthClient OpenAIOAuthCli
 // 用于调用 chatgpt.com/backend-api 获取账号信息（plan_type 等）。
 func (s *OpenAIOAuthService) SetPrivacyClientFactory(factory PrivacyClientFactory) {
 	s.privacyClientFactory = factory
+}
+
+// SetRedisSessionBackend 让 OAuth 会话改由 Redis 存储，以便在多副本部署下跨 Pod 共享。
+// 传入 nil 时保持进程内存储。
+func (s *OpenAIOAuthService) SetRedisSessionBackend(rdb *redis.Client) {
+	s.sessionStore.SetRedisBackend(rdb)
 }
 
 // OpenAIAuthURLResult contains the authorization URL and session info

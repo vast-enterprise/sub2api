@@ -13,6 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/oauthsession"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 )
@@ -56,12 +59,18 @@ type OAuthSession struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
-// SessionStore manages xAI OAuth sessions in memory.
+// redisSessionKeyPrefix namespaces xAI/Grok OAuth session keys in Redis.
+const redisSessionKeyPrefix = "oauth:session:grok:"
+
+// SessionStore manages xAI OAuth sessions. When backed by Redis (multi-replica
+// deployments), sessions are shared across pods; otherwise it falls back to an
+// in-process map.
 type SessionStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*OAuthSession
 	stopOnce sync.Once
 	stopCh   chan struct{}
+	backend  *oauthsession.RedisBackend // nil => in-memory
 }
 
 func NewSessionStore() *SessionStore {
@@ -73,13 +82,30 @@ func NewSessionStore() *SessionStore {
 	return store
 }
 
+// SetRedisBackend switches the store to Redis-backed storage. Passing a nil
+// client is a no-op and leaves the store in-memory.
+func (s *SessionStore) SetRedisBackend(rdb *redis.Client) {
+	s.backend = oauthsession.NewRedisBackend(rdb, redisSessionKeyPrefix, SessionTTL)
+}
+
 func (s *SessionStore) Set(sessionID string, session *OAuthSession) {
+	if s.backend != nil {
+		s.backend.Set(sessionID, session)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[sessionID] = session
 }
 
 func (s *SessionStore) Get(sessionID string) (*OAuthSession, bool) {
+	if s.backend != nil {
+		var session OAuthSession
+		if !s.backend.Get(sessionID, &session) {
+			return nil, false
+		}
+		return &session, true
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	session, ok := s.sessions[sessionID]
@@ -93,6 +119,10 @@ func (s *SessionStore) Get(sessionID string) (*OAuthSession, bool) {
 }
 
 func (s *SessionStore) Delete(sessionID string) {
+	if s.backend != nil {
+		s.backend.Delete(sessionID)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.sessions, sessionID)
