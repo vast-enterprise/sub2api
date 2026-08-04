@@ -15,8 +15,11 @@ const (
 	CLITokenAuthHeader     = "x-xai-token-auth"
 	CLITokenAuthValue      = "xai-grok-cli"
 	CLIClientVersionHeader = "x-grok-client-version"
+	// CLIClientVersion is the one place the pinned Grok CLI version lives. The
+	// repository and service layers build their own client identity from it, so
+	// one bump here covers OAuth traffic and billing probes together.
 	// Keep in sync with https://x.ai/cli/stable.
-	CLIClientVersion = "0.2.93"
+	CLIClientVersion = "0.2.114"
 	CLIUserAgent     = "grok-pager/" + CLIClientVersion + " grok-shell/" + CLIClientVersion + " (macos; aarch64)"
 
 	BillingWeeklyPath  = "/billing?format=credits"
@@ -76,6 +79,8 @@ type BillingSummary struct {
 	UsedPercent        *float64                `json:"used_percent,omitempty"`
 	Plan               string                  `json:"plan,omitempty"` // SuperGrok | SuperGrok Heavy | ""
 	StatusCode         int                     `json:"status_code,omitempty"`
+	WeeklyStatusCode   int                     `json:"weekly_status_code,omitempty"`
+	MonthlyStatusCode  int                     `json:"monthly_status_code,omitempty"`
 	Source             string                  `json:"source,omitempty"`
 	FetchedAt          string                  `json:"fetched_at,omitempty"`
 	UpdatedAt          string                  `json:"updated_at,omitempty"`

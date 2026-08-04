@@ -38,22 +38,22 @@
                 </button>
                 <div
                   v-if="showAutoRefreshDropdown"
-                  class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                  class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-dark-700 dark:bg-dark-800"
                 >
                   <div class="p-2">
                     <button
                       @click="setAutoRefreshEnabled(!autoRefreshEnabled)"
-                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
                     >
                       <span>{{ t('admin.accounts.enableAutoRefresh') }}</span>
                       <Icon v-if="autoRefreshEnabled" name="check" size="sm" class="text-primary-500" />
                     </button>
-                    <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                    <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
                     <button
                       v-for="sec in autoRefreshIntervals"
                       :key="sec"
                       @click="setAutoRefreshInterval(sec)"
-                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
                     >
                       <span>{{ autoRefreshIntervalLabel(sec) }}</span>
                       <Icon v-if="autoRefreshIntervalSeconds === sec" name="check" size="sm" class="text-primary-500" />
@@ -65,130 +65,98 @@
               <!-- More Tools Dropdown -->
               <div class="relative" ref="accountToolsDropdownRef">
                 <button
-                  @click="
-                    showAccountToolsDropdown = !showAccountToolsDropdown;
-                    showAutoRefreshDropdown = false
-                  "
+                  ref="accountToolsTriggerRef"
+                  @click="toggleAccountToolsDropdown"
                   class="btn btn-secondary px-2 md:px-3"
                   :title="t('admin.accounts.moreActions')"
+                  :aria-expanded="showAccountToolsDropdown"
                 >
                   <Icon name="more" size="sm" class="md:mr-1.5" />
                   <span class="hidden md:inline">{{ t('admin.accounts.moreActions') }}</span>
                   <Icon name="chevronDown" size="xs" class="ml-1 hidden md:inline" />
                 </button>
-                <div
-                  v-if="showAccountToolsDropdown"
-                  class="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
-                >
-                  <div class="max-h-[70vh] overflow-y-auto p-2">
-                    <div class="px-2 py-2">
-                      <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                        {{ t('admin.accounts.dataActions') }}
+                <Teleport to="body">
+                  <div
+                    v-if="showAccountToolsDropdown"
+                    class="fixed z-[9999] origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-dark-700 dark:bg-dark-800"
+                    :style="accountToolsDropdownStyle"
+                    @click.stop
+                  >
+                    <div class="overflow-y-auto p-2" :style="{ maxHeight: `${accountToolsDropdownPosition.maxHeight}px` }">
+                      <div class="px-2 py-2">
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                          {{ t('admin.accounts.dataActions') }}
+                        </div>
                       </div>
-                    </div>
-                    <button class="account-tools-menu-item" @click="openSyncFromCrs">
-                      <span class="account-tools-menu-icon bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
-                        <Icon name="sync" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">{{ t('admin.accounts.syncFromCrs') }}</span>
-                    </button>
-                    <button class="account-tools-menu-item" @click="openImportData">
-                      <span class="account-tools-menu-icon bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
-                        <Icon name="upload" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">{{ t('admin.accounts.dataImport') }}</span>
-                    </button>
-                    <button class="account-tools-menu-item" @click="openExportDataDialogFromMenu">
-                      <span class="account-tools-menu-icon bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
-                        <Icon name="download" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">
-                        {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
-                      </span>
-                      <span
-                        v-if="selIds.length"
-                        class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
-                      >
-                        {{ t('admin.accounts.selectedCount', { count: selIds.length }) }}
-                      </span>
-                    </button>
-
-                    <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
-                    <div class="px-2 py-2">
-                      <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                        {{ t('admin.accounts.toolActions') }}
-                      </div>
-                    </div>
-                    <button class="account-tools-menu-item" @click="openErrorPassthrough">
-                      <span class="account-tools-menu-icon bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
-                        <Icon name="shield" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">{{ t('admin.errorPassthrough.title') }}</span>
-                    </button>
-                    <button class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
-                      <span class="account-tools-menu-icon bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                        <Icon name="lock" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
-                    </button>
-
-                    <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
-                    <div class="space-y-2 px-3 py-2">
-                      <div class="flex items-center justify-between gap-3">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-200">
-                          {{ t('admin.accounts.upstreamBilling.autoProbeSettings') }}
+                      <button class="account-tools-menu-item" @click="openSyncFromCrs">
+                        <span class="account-tools-menu-icon bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                          <Icon name="sync" size="sm" />
                         </span>
-                        <Toggle
-                          v-model="upstreamBillingProbeSettings.enabled"
-                          :aria-label="t('admin.accounts.upstreamBilling.autoProbeSettings')"
-                        />
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <label class="flex-1 text-xs text-gray-500 dark:text-gray-400" for="upstream-billing-probe-interval">
-                          {{ t('admin.accounts.upstreamBilling.intervalMinutes') }}
-                        </label>
-                        <input
-                          id="upstream-billing-probe-interval"
-                          v-model.number="upstreamBillingProbeSettings.interval_minutes"
-                          type="number"
-                          min="5"
-                          max="1440"
-                          class="input h-8 w-20 px-2 text-sm"
-                        />
-                        <button
-                          type="button"
-                          class="btn btn-secondary h-8 px-2"
-                          :disabled="upstreamBillingSettingsLoading || upstreamBillingSettingsSaving"
-                          :title="t('common.save')"
-                          @click="saveUpstreamBillingProbeSettings"
+                        <span class="flex-1 text-left">{{ t('admin.accounts.syncFromCrs') }}</span>
+                      </button>
+                      <button class="account-tools-menu-item" @click="openImportData">
+                        <span class="account-tools-menu-icon bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
+                          <Icon name="upload" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.accounts.dataImport') }}</span>
+                      </button>
+                      <button class="account-tools-menu-item" @click="openExportDataDialogFromMenu">
+                        <span class="account-tools-menu-icon bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
+                          <Icon name="download" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">
+                          {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
+                        </span>
+                        <span
+                          v-if="selIds.length"
+                          class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
                         >
-                          <Icon name="check" size="sm" />
+                          {{ t('admin.accounts.selectedCount', { count: selIds.length }) }}
+                        </span>
+                      </button>
+
+                      <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
+                      <div class="px-2 py-2">
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                          {{ t('admin.accounts.toolActions') }}
+                        </div>
+                      </div>
+                      <button class="account-tools-menu-item" @click="openErrorPassthrough">
+                        <span class="account-tools-menu-icon bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
+                          <Icon name="shield" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.errorPassthrough.title') }}</span>
+                      </button>
+                      <button class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
+                        <span class="account-tools-menu-icon bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          <Icon name="lock" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
+                      </button>
+
+                      <div class="my-2 border-t border-gray-100 dark:border-dark-700"></div>
+                      <div class="px-2 py-2">
+                        <div class="flex items-center justify-between gap-3">
+                          <span class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                            {{ t('admin.accounts.viewColumns') }}
+                          </span>
+                          <Icon name="grid" size="sm" class="text-gray-400" />
+                        </div>
+                      </div>
+                      <div class="grid grid-cols-1 gap-1">
+                        <button
+                          v-for="col in toggleableColumns"
+                          :key="col.key"
+                          @click="toggleColumn(col.key)"
+                          class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
+                        >
+                          <span class="truncate">{{ col.label }}</span>
+                          <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
                         </button>
                       </div>
                     </div>
-
-                    <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
-                    <div class="px-2 py-2">
-                      <div class="flex items-center justify-between gap-3">
-                        <span class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                          {{ t('admin.accounts.viewColumns') }}
-                        </span>
-                        <Icon name="grid" size="sm" class="text-gray-400" />
-                      </div>
-                    </div>
-                    <div class="grid grid-cols-1 gap-1">
-                      <button
-                        v-for="col in toggleableColumns"
-                        :key="col.key"
-                        @click="toggleColumn(col.key)"
-                        class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                      >
-                        <span class="truncate">{{ col.label }}</span>
-                        <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
-                      </button>
-                    </div>
                   </div>
-                </div>
+                </Teleport>
               </div>
             </template>
           </AccountTableActions>
@@ -209,6 +177,9 @@
       <template #table>
         <AccountBulkActionsBar
           :selected-ids="selIds"
+          :total-results="pagination.total"
+          :selecting-all="selectingAllResults"
+          :all-results-selected="allResultsSelected"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
@@ -217,6 +188,7 @@
           @edit-filtered="openBulkEditFiltered"
           @clear="clearSelection"
           @select-page="selectPage"
+          @select-all-results="handleSelectAllResults"
           @toggle-schedulable="handleBulkToggleSchedulable"
         />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -252,7 +224,24 @@
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
-              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <HelpTooltip
+                v-if="accountHomepageUrl(row)"
+                :content="accountHomepageUrl(row)"
+                width-class="w-max max-w-sm break-all"
+                class="-ml-1 self-start"
+              >
+                <template #trigger>
+                  <a
+                    :href="accountHomepageUrl(row)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="border-b border-dotted border-gray-300 font-medium text-gray-900 dark:border-dark-600 dark:text-white"
+                  >
+                    {{ value }}
+                  </a>
+                </template>
+              </HelpTooltip>
+              <span v-else class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
               <span
                 v-if="accountDisplayEmail(row)"
                 class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
@@ -329,6 +318,7 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
+              @account-updated="handleAccountUpdated"
             />
           </template>
           <template #cell-proxy="{ row }">
@@ -348,25 +338,36 @@
                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" :title="t('admin.accounts.fallbackActiveTip', { origin: row.proxy_fallback_origin_name })">
                   {{ t('admin.accounts.fallbackActive') }}
                 </span>
-                <button class="text-xs px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" @click="onRevertFallback(row)">{{ t('admin.accounts.revertProxy') }}</button>
+                <button class="text-xs px-1.5 py-0.5 rounded border border-gray-300 dark:border-dark-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-700" @click="onRevertFallback(row)">{{ t('admin.accounts.revertProxy') }}</button>
               </div>
             </div>
           </template>
           <template #cell-rate_multiplier="{ row }">
-            <span class="text-sm font-mono text-gray-700 dark:text-gray-300">
-              {{ (row.rate_multiplier ?? 1).toFixed(2) }}x
+            <span class="inline-flex items-center gap-1 text-sm font-mono text-gray-700 dark:text-gray-300">
+              <span>{{ formatMultiplier(row.rate_multiplier ?? 1) }}x</span>
+              <span
+                v-if="row.extra?.upstream_billing_rate_sync_enabled === true"
+                class="inline-flex cursor-help text-emerald-600 dark:text-emerald-400"
+                :aria-label="t('admin.accounts.upstreamBilling.syncedRateTooltip')"
+                :title="t('admin.accounts.upstreamBilling.syncedRateTooltip')"
+                data-testid="account-rate-sync-indicator"
+              >
+                <Icon name="sync" size="xs" />
+              </span>
             </span>
           </template>
           <template #header-upstream_billing_rate="{ column }">
-            <div class="flex items-center">
+            <div class="flex items-center gap-1">
               <span>{{ column.label }}</span>
-              <HelpTooltip :content="t('admin.accounts.upstreamBilling.trustWarning')" width-class="w-80" />
+              <span @click.stop>
+                <HelpTooltip :content="t('admin.accounts.upstreamBilling.trustWarning')" width-class="w-80" />
+              </span>
             </div>
           </template>
           <template #cell-upstream_billing_rate="{ row }">
             <UpstreamBillingRateCell
               :account="row"
-              :interval-minutes="upstreamBillingProbeSettings.interval_minutes"
+              :global-probe-enabled="upstreamBillingProbeGloballyEnabled"
               :now="upstreamBillingNow"
               :probing="probingUpstreamBilling.has(row.id)"
               @probe="handleProbeUpstreamBilling(row)"
@@ -475,6 +476,7 @@
     </ConfirmDialog>
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
+    <TotpStepUpDialog :controller="accountExportStepUp" />
   </AppLayout>
 </template>
 
@@ -488,11 +490,12 @@ import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
+import { useStepUp, isStepUpBlocked, isStepUpCancelled, stepUpBlockReason } from '@/composables/useStepUp'
+import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
-import Toggle from '@/components/common/Toggle.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal } from '@/components/account'
@@ -516,11 +519,15 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
+import { fetchAllAccountIds } from '@/utils/accountSelection'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSettings, UpstreamBillingProbeSnapshot } from '@/types'
+import { sanitizeUrl } from '@/utils/url'
+import { getFloatingPanelPosition } from '@/utils/floatingPanel'
+import { formatMultiplier } from '@/utils/formatters'
+import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -598,19 +605,29 @@ const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
-const upstreamBillingProbeSettings = reactive<UpstreamBillingProbeSettings>({
-  enabled: true,
-  interval_minutes: 30
-})
-const upstreamBillingSettingsLoading = ref(false)
-const upstreamBillingSettingsSaving = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
+const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
 const upstreamBillingNow = ref(Date.now())
+let lastUpstreamBillingSortRefreshMinute = -1
 useIntervalFn(() => { upstreamBillingNow.value = Date.now() }, 60_000)
 
 // Account tools dropdown
 const showAccountToolsDropdown = ref(false)
 const accountToolsDropdownRef = ref<HTMLElement | null>(null)
+const accountToolsTriggerRef = ref<HTMLElement | null>(null)
+const accountToolsDropdownPosition = reactive({
+  top: null as number | null,
+  bottom: null as number | null,
+  left: 16,
+  width: 320,
+  maxHeight: 0
+})
+const accountToolsDropdownStyle = computed(() => ({
+  top: accountToolsDropdownPosition.top == null ? 'auto' : `${accountToolsDropdownPosition.top}px`,
+  bottom: accountToolsDropdownPosition.bottom == null ? 'auto' : `${accountToolsDropdownPosition.bottom}px`,
+  left: `${accountToolsDropdownPosition.left}px`,
+  width: `${accountToolsDropdownPosition.width}px`
+}))
 const hiddenColumns = reactive<Set<string>>(new Set())
 const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'scheduler_score', 'rate_multiplier']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
@@ -632,6 +649,7 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
   'schedulable',
   'priority',
   'rate_multiplier',
+  'upstream_billing_rate',
   'last_used_at',
   'created_at',
   'expires_at'
@@ -911,6 +929,7 @@ const {
 })
 
 const {
+  selectedSet,
   selectedIds: selIds,
   allVisibleSelected,
   isSelected,
@@ -918,15 +937,35 @@ const {
   select,
   deselect,
   toggle: toggleSel,
-  clear: clearSelection,
+  clear: clearSelectedIds,
   removeMany: removeSelectedAccounts,
   toggleVisible,
-  selectVisible: selectPage,
+  selectVisible: selectCurrentPage,
   batchUpdate
 } = useTableSelection<Account>({
   rows: accounts,
   getId: (account) => account.id
 })
+
+const selectingAllResults = ref(false)
+const selectedAllResultIDs = ref<Set<number> | null>(null)
+const selectionRequestVersion = ref(0)
+const allResultsSelected = computed(() => {
+  const snapshot = selectedAllResultIDs.value
+  if (!snapshot || snapshot.size === 0 || snapshot.size !== selectedSet.value.size) return false
+  return Array.from(snapshot).every(id => selectedSet.value.has(id))
+})
+
+const clearSelection = () => {
+  selectionRequestVersion.value++
+  selectingAllResults.value = false
+  selectedAllResultIDs.value = null
+  clearSelectedIds()
+}
+
+const selectPage = () => {
+  selectCurrentPage()
+}
 
 const swipeVirtualContext: SwipeSelectVirtualContext = {
   getVirtualizer: () => dataTableRef.value?.virtualizer ?? null,
@@ -947,8 +986,15 @@ const resetAutoRefreshCache = () => {
 
 const isFirstLoad = ref(true)
 
+function markUpstreamBillingSortRefresh() {
+  if (sortState.sort_by === 'upstream_billing_rate') {
+    lastUpstreamBillingSortRefreshMinute = Math.floor(Date.now() / 60_000)
+  }
+}
+
 const load = async () => {
   const requestParams = params as any
+  markUpstreamBillingSortRefresh()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
@@ -965,6 +1011,7 @@ const load = async () => {
 }
 
 const reload = async () => {
+  markUpstreamBillingSortRefresh()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
@@ -973,7 +1020,21 @@ const reload = async () => {
   await refreshTodayStatsBatch()
 }
 
+const refreshUpstreamBillingSortedList = async (force = false) => {
+  if (sortState.sort_by !== 'upstream_billing_rate') return
+
+  const minute = Math.floor(upstreamBillingNow.value / 60_000)
+  if (!force && lastUpstreamBillingSortRefreshMinute === minute) return
+  lastUpstreamBillingSortRefreshMinute = minute
+  try {
+    await reload()
+  } catch (error) {
+    console.error('Failed to refresh upstream billing sort:', error)
+  }
+}
+
 const debouncedReload = () => {
+  clearSelection()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
@@ -1012,12 +1073,21 @@ const handleSort = (key: string, order: AccountSortOrder) => {
 }
 
 watch(loading, (isLoading, wasLoading) => {
+  if (wasLoading && !isLoading) {
+    upstreamBillingNow.value = Date.now()
+  }
   if (wasLoading && !isLoading && pendingTodayStatsRefresh.value) {
     pendingTodayStatsRefresh.value = false
     refreshTodayStatsBatch().catch((error) => {
       console.error('Failed to refresh account today stats after table load:', error)
     })
   }
+})
+
+watch(upstreamBillingNow, () => {
+  if (sortState.sort_by !== 'upstream_billing_rate' || loading.value) return
+  if (typeof document !== 'undefined' && document.hidden) return
+  void refreshUpstreamBillingSortedList()
 })
 
 const isAnyModalOpen = computed(() => {
@@ -1131,7 +1201,9 @@ const refreshAccountsIncrementally = async () => {
       pagination.pages = result.data.pages || 0
       mergeAccountsIncrementally(result.data.items || [])
       hasPendingListSync.value = false
+      markUpstreamBillingSortRefresh()
     }
+    upstreamBillingNow.value = Date.now()
 
     await refreshTodayStatsBatch()
   } catch (error) {
@@ -1142,13 +1214,41 @@ const refreshAccountsIncrementally = async () => {
 }
 
 const handleManualRefresh = async () => {
-  await load()
+  await Promise.all([load(), loadUpstreamBillingProbeGlobalState()])
   // Force usage cells to refetch /usage on explicit user refresh.
   usageManualRefreshToken.value += 1
 }
 
+const loadUpstreamBillingProbeGlobalState = async () => {
+  try {
+    const settings = await adminAPI.accounts.getUpstreamBillingProbeSettings()
+    upstreamBillingProbeGloballyEnabled.value = settings.enabled
+  } catch (error) {
+    console.error('Failed to load upstream billing probe settings:', error)
+  }
+}
+
 const closeAccountToolsDropdown = () => {
   showAccountToolsDropdown.value = false
+}
+
+const updateAccountToolsDropdownPosition = () => {
+  const trigger = accountToolsTriggerRef.value
+  if (!trigger) return
+
+  const position = getFloatingPanelPosition(
+    trigger.getBoundingClientRect(),
+    document.documentElement.clientWidth || window.innerWidth,
+    window.innerHeight
+  )
+  Object.assign(accountToolsDropdownPosition, position)
+}
+
+const toggleAccountToolsDropdown = () => {
+  const nextVisible = !showAccountToolsDropdown.value
+  showAutoRefreshDropdown.value = false
+  if (nextVisible) updateAccountToolsDropdownPosition()
+  showAccountToolsDropdown.value = nextVisible
 }
 
 const openSyncFromCrs = () => {
@@ -1174,31 +1274,6 @@ const openErrorPassthrough = () => {
 const openTLSFingerprintProfiles = () => {
   closeAccountToolsDropdown()
   showTLSFingerprintProfiles.value = true
-}
-
-const loadUpstreamBillingProbeSettings = async () => {
-  upstreamBillingSettingsLoading.value = true
-  try {
-    Object.assign(upstreamBillingProbeSettings, await adminAPI.accounts.getUpstreamBillingProbeSettings())
-  } catch (error) {
-    console.error('Failed to load upstream billing probe settings:', error)
-  } finally {
-    upstreamBillingSettingsLoading.value = false
-  }
-}
-
-const saveUpstreamBillingProbeSettings = async () => {
-  upstreamBillingSettingsSaving.value = true
-  try {
-    const saved = await adminAPI.accounts.updateUpstreamBillingProbeSettings({ ...upstreamBillingProbeSettings })
-    Object.assign(upstreamBillingProbeSettings, saved)
-    appStore.showSuccess(t('admin.accounts.upstreamBilling.settingsSaved'))
-  } catch (error) {
-    console.error('Failed to save upstream billing probe settings:', error)
-    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.settingsFailed')))
-  } finally {
-    upstreamBillingSettingsSaving.value = false
-  }
 }
 
 const syncPendingListChanges = async () => {
@@ -1292,6 +1367,12 @@ function accountDisplayEmail(row: any): string {
   return row.extra?.email_address || row.extra?.email || row.credentials?.email || row.parent_email || ''
 }
 
+function accountHomepageUrl(row: Account): string {
+  if (row.type !== 'apikey' || typeof row.credentials?.base_url !== 'string') return ''
+  const baseUrl = sanitizeUrl(row.credentials.base_url)
+  return baseUrl ? new URL(baseUrl).origin : ''
+}
+
 type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'
 
 function getOpenAICompactState(row: any): OpenAICompactBadgeState | null {
@@ -1342,7 +1423,7 @@ function getOpenAICompactTitle(row: any): string {
 function getAntigravityTierClass(row: any): string {
   const tier = getAntigravityTierFromRow(row)
   switch (tier) {
-    case 'free-tier': return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+    case 'free-tier': return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
     case 'g1-pro-tier': return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
     case 'g1-ultra-tier': return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
     default: return ''
@@ -1364,13 +1445,13 @@ const allColumns = computed(() => {
   if (!authStore.isSimpleMode) {
     c.push({ key: 'groups', label: t('admin.accounts.columns.groups'), sortable: false })
   }
+  c.push({ key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false })
   c.push(
-    { key: 'usage', label: t('admin.accounts.columns.usageWindows'), sortable: false },
     { key: 'proxy', label: t('admin.accounts.columns.proxy'), sortable: false },
     { key: 'priority', label: t('admin.accounts.columns.priority'), sortable: true },
     { key: 'scheduler_score', label: t('admin.accounts.columns.schedulerScore'), sortable: false },
     { key: 'rate_multiplier', label: t('admin.accounts.columns.billingRateMultiplier'), sortable: true },
-    { key: 'upstream_billing_rate', label: t('admin.accounts.columns.upstreamBillingRate'), sortable: false },
+    { key: 'upstream_billing_rate', label: t('admin.accounts.columns.upstreamBillingRate'), sortable: true },
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true },
     { key: 'created_at', label: t('admin.accounts.columns.createdAt'), sortable: true },
     { key: 'expires_at', label: t('admin.accounts.columns.expiresAt'), sortable: true },
@@ -1448,7 +1529,27 @@ const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
   toggleVisible(target.checked)
 }
-const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() } catch (error) { console.error('Failed to bulk delete accounts:', error) } }
+const handleBulkDelete = async () => {
+  const accountIds = [...selIds.value]
+  if (!confirm(t('admin.accounts.bulkActions.confirmDelete', { count: accountIds.length }))) return
+  try {
+    const result = await adminAPI.accounts.batchDelete(accountIds)
+    if (result.failed > 0) {
+      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', {
+        success: result.success,
+        failed: result.failed
+      }))
+      setSelectedIds(result.failed_ids?.length ? result.failed_ids : accountIds)
+    } else {
+      appStore.showSuccess(t('admin.accounts.bulkActions.deleteSuccess', { count: result.success }))
+      clearSelection()
+    }
+    await reload()
+  } catch (error) {
+    console.error('Failed to bulk delete accounts:', error)
+    appStore.showError(String(error))
+  }
+}
 const handleBulkResetStatus = async () => {
   if (!confirm(t('common.confirm'))) return
   try {
@@ -1494,9 +1595,14 @@ const handleBulkProbeUpstreamBilling = async () => {
   accountIDs.forEach(id => probingUpstreamBilling.add(id))
   try {
     const results = await adminAPI.accounts.probeUpstreamBillingBatch(accountIDs)
+    let patched = false
     results.forEach(result => {
-      if (result.snapshot) patchUpstreamBillingSnapshot(result.account_id, result.snapshot)
+      if (result.snapshot) {
+        patchUpstreamBillingSnapshot(result.account_id, result.snapshot)
+        patched = true
+      }
     })
+    if (patched) await refreshAccountsAfterUpstreamBillingProbe()
     const failed = results.filter(result => result.error).length
     if (failed > 0) {
       appStore.showError(t('admin.accounts.upstreamBilling.batchPartial', { success: results.length - failed, failed }))
@@ -1624,6 +1730,32 @@ const buildBulkEditFilterSnapshot = () => {
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
+  }
+}
+
+const handleSelectAllResults = async () => {
+  if (selectingAllResults.value || pagination.total === 0) return
+
+  const requestVersion = ++selectionRequestVersion.value
+  const filters = buildBulkEditFilterSnapshot()
+  selectingAllResults.value = true
+  try {
+    const ids = await fetchAllAccountIds(
+      (page, pageSize, requestFilters) => adminAPI.accounts.list(page, pageSize, requestFilters),
+      filters
+    )
+    if (requestVersion !== selectionRequestVersion.value) return
+
+    setSelectedIds(ids)
+    selectedAllResultIDs.value = new Set(ids)
+  } catch (error) {
+    if (requestVersion !== selectionRequestVersion.value) return
+    console.error('Failed to select all account results:', error)
+    appStore.showError(t('admin.accounts.bulkActions.selectAllFailed'))
+  } finally {
+    if (requestVersion === selectionRequestVersion.value) {
+      selectingAllResults.value = false
+    }
   }
 }
 
@@ -1762,17 +1894,29 @@ const patchAccountInList = (updatedAccount: Account) => {
 const patchUpstreamBillingSnapshot = (accountID: number, snapshot: UpstreamBillingProbeSnapshot) => {
   const account = accounts.value.find(item => item.id === accountID)
   if (!account) return
+  markUpstreamBillingSortRefresh()
+  upstreamBillingNow.value = Date.now()
   patchAccountInList({
     ...account,
     extra: { ...account.extra, upstream_billing_probe: snapshot }
   })
+}
+const refreshAccountsAfterUpstreamBillingProbe = async () => {
+  try {
+    await load()
+  } catch (error) {
+    console.error('Failed to refresh accounts after upstream billing probe:', error)
+  }
 }
 const handleProbeUpstreamBilling = async (account: Account) => {
   if (probingUpstreamBilling.has(account.id)) return
   probingUpstreamBilling.add(account.id)
   try {
     const result = await adminAPI.accounts.probeUpstreamBilling(account.id)
-    if (result.snapshot) patchUpstreamBillingSnapshot(account.id, result.snapshot)
+    if (result.snapshot) {
+      patchUpstreamBillingSnapshot(account.id, result.snapshot)
+      await refreshAccountsAfterUpstreamBillingProbe()
+    }
   } catch (error) {
     console.error('Failed to probe upstream billing:', error)
     appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.probeFailed')))
@@ -1797,14 +1941,14 @@ const handleExportData = async () => {
   if (exportingData.value) return
   exportingData.value = true
   try {
-    const dataPayload = await adminAPI.accounts.exportData(
+    const dataPayload = await accountExportStepUp.run(() => adminAPI.accounts.exportData(
       selIds.value.length > 0
         ? { ids: selIds.value, includeProxies: includeProxyOnExport.value }
         : {
             includeProxies: includeProxyOnExport.value,
             filters: buildAccountQueryFilters()
           }
-    )
+    ))
     const timestamp = formatExportTimestamp()
     const filename = `sub2api-account-${timestamp}.json`
     const blob = new Blob([JSON.stringify(dataPayload, null, 2)], { type: 'application/json' })
@@ -1822,12 +1966,23 @@ const handleExportData = async () => {
       appStore.showSuccess(t('admin.accounts.dataExported'))
     }
   } catch (error: any) {
-    appStore.showError(error?.message || t('admin.accounts.dataExportFailed'))
+    if (isStepUpCancelled(error)) {
+      // 用户主动取消 step-up 验证，静默返回，不弹错误提示。
+    } else if (isStepUpBlocked(error)) {
+      appStore.showError(
+        stepUpBlockReason(error) === 'STEP_UP_ADMIN_API_KEY_FORBIDDEN'
+          ? t('stepUp.adminApiKeyForbidden')
+          : t('stepUp.notEnabled')
+      )
+    } else {
+      appStore.showError(error?.message || t('admin.accounts.dataExportFailed'))
+    }
   } finally {
     exportingData.value = false
     showExportDataDialog.value = false
   }
 }
+const accountExportStepUp = useStepUp()
 const closeTestModal = () => { showTest.value = false; testingAcc.value = null }
 const closeStatsModal = () => { showStats.value = false; statsAcc.value = null }
 const closeReAuthModal = () => { showReAuth.value = false; reAuthAcc.value = null }
@@ -2006,9 +2161,14 @@ const proxyExpiryText = (p: AccountProxy): string => {
   return params ? t(key, params) : t(key)
 }
 
-// 滚动时关闭操作菜单（不关闭列设置下拉菜单）
+// 表格滚动时关闭行操作菜单，并让顶部工具菜单继续贴紧触发按钮。
 const handleScroll = () => {
   menu.show = false
+  if (showAccountToolsDropdown.value) updateAccountToolsDropdownPosition()
+}
+
+const handleViewportResize = () => {
+  if (showAccountToolsDropdown.value) updateAccountToolsDropdownPosition()
 }
 
 // 点击外部关闭顶部下拉菜单
@@ -2024,7 +2184,7 @@ const handleClickOutside = (event: MouseEvent) => {
 
 onMounted(async () => {
   load()
-  loadUpstreamBillingProbeSettings()
+  loadUpstreamBillingProbeGlobalState()
   try {
     const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
     proxies.value = p
@@ -2033,6 +2193,7 @@ onMounted(async () => {
     console.error('Failed to load proxies/groups:', error)
   }
   window.addEventListener('scroll', handleScroll, true)
+  window.addEventListener('resize', handleViewportResize)
   document.addEventListener('click', handleClickOutside)
 
   if (autoRefreshEnabled.value) {
@@ -2045,13 +2206,14 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll, true)
+  window.removeEventListener('resize', handleViewportResize)
   document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
 <style scoped>
 .account-tools-menu-item {
-  @apply flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700;
+  @apply flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700;
 }
 
 .account-tools-menu-icon {

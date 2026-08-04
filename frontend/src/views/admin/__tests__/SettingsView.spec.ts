@@ -13,9 +13,15 @@ const {
   getOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
+  getPanelRateLimitSettings,
+  updatePanelRateLimitSettings,
   getStreamTimeoutSettings,
   getRectifierSettings,
   getBetaPolicySettings,
+  getUpstreamBillingProbeSettings,
+  updateUpstreamBillingProbeSettings,
+  getOllamaCloudUsageSettings,
+  updateOllamaCloudUsageSettings,
   getGroups,
   listProxies,
   getProviders,
@@ -35,9 +41,28 @@ const {
   getOverloadCooldownSettings: vi.fn(),
   getRateLimit429CooldownSettings: vi.fn(),
   updateRateLimit429CooldownSettings: vi.fn(),
+  getPanelRateLimitSettings: vi.fn().mockResolvedValue({
+    enabled: true,
+    user_rpm: 240,
+    heavy_rpm: 60,
+    exempt_admin: true,
+    public_ip_rpm: 300,
+  }),
+  updatePanelRateLimitSettings: vi.fn().mockImplementation(async (payload) => payload),
   getStreamTimeoutSettings: vi.fn(),
   getRectifierSettings: vi.fn(),
   getBetaPolicySettings: vi.fn(),
+  getUpstreamBillingProbeSettings: vi.fn().mockResolvedValue({
+    enabled: true,
+    interval_minutes: 30,
+  }),
+  updateUpstreamBillingProbeSettings: vi.fn().mockImplementation(async (payload) => payload),
+  getOllamaCloudUsageSettings: vi.fn().mockResolvedValue({
+    enabled: false,
+    interval_minutes: 60,
+    debounce_minutes: 1,
+  }),
+  updateOllamaCloudUsageSettings: vi.fn().mockImplementation(async (payload) => payload),
   getGroups: vi.fn(),
   listProxies: vi.fn(),
   getProviders: vi.fn(),
@@ -63,9 +88,17 @@ vi.mock("@/api", () => ({
       getOverloadCooldownSettings,
       getRateLimit429CooldownSettings,
       updateRateLimit429CooldownSettings,
+      getPanelRateLimitSettings,
+      updatePanelRateLimitSettings,
       getStreamTimeoutSettings,
       getRectifierSettings,
       getBetaPolicySettings,
+    },
+    accounts: {
+      getUpstreamBillingProbeSettings,
+      updateUpstreamBillingProbeSettings,
+      getOllamaCloudUsageSettings,
+      updateOllamaCloudUsageSettings,
     },
     groups: {
       getAll: getGroups,
@@ -184,6 +217,16 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.openaiExperimentalScheduler.upstreamCostWeight": "计费倍率",
     "admin.settings.openaiExperimentalScheduler.previousResponseWeight": "previous_response 粘性",
     "admin.settings.openaiExperimentalScheduler.sessionStickyWeight": "session_hash 粘性",
+    "admin.settings.upstreamBillingProbe.title": "上游倍率自动探测",
+    "admin.settings.upstreamBillingProbe.description": "定期获取 OpenAI API Key 所连接上游 Sub2API 站点声明的计费倍率。",
+    "admin.settings.upstreamBillingProbe.enabled": "启用全局自动探测",
+    "admin.settings.upstreamBillingProbe.enabledHint": "开启后，仅对账号自身已启用自动检测的账号执行定时探测。",
+    "admin.settings.upstreamBillingProbe.intervalMinutes": "探测周期（分钟）",
+    "admin.settings.upstreamBillingProbe.intervalHint": "范围 5–1440 分钟。",
+    "admin.settings.upstreamBillingProbe.saved": "上游倍率自动探测设置已保存",
+    "admin.settings.upstreamBillingProbe.saveFailed": "保存上游倍率自动探测设置失败",
+    "admin.settings.security.passkeyDeploymentHint":
+      "请由服务器运维在部署配置中将 webauthn.enabled 设为 true，填写 webauthn.rp_id（仅域名）与 webauthn.rp_origins（完整 HTTPS 来源），然后重启服务。",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -321,6 +364,10 @@ const baseSettingsResponse = {
   password_reset_enabled: false,
   totp_enabled: false,
   totp_encryption_key_configured: false,
+  passkey_enabled: true,
+  passkey_configured: true,
+  passkey_rp_id: "sub3.nebula-spaces.com",
+  passkey_rp_origins: ["https://sub3.nebula-spaces.com"],
   default_balance: 0,
   default_concurrency: 1,
   default_subscriptions: [],
@@ -331,6 +378,7 @@ const baseSettingsResponse = {
   contact_info: "",
   doc_url: "",
   home_content: "",
+  compact_home_enabled: false,
   hide_ccs_import_button: false,
   table_default_page_size: 20,
   table_page_size_options: [10, 20, 50, 100],
@@ -348,6 +396,13 @@ const baseSettingsResponse = {
   turnstile_enabled: false,
   turnstile_site_key: "",
   turnstile_secret_key_configured: false,
+  tencent_captcha_enabled: false,
+  tencent_captcha_app_id: "",
+  tencent_captcha_app_secret_key_configured: false,
+  tencent_captcha_cloud_secret_id_configured: false,
+  tencent_captcha_cloud_secret_key_configured: false,
+  api_key_acl_trust_forwarded_ip: true,
+  forwarded_client_ip_headers: [],
   linuxdo_connect_enabled: false,
   linuxdo_connect_client_id: "",
   linuxdo_connect_client_secret_configured: false,
@@ -517,6 +572,16 @@ async function openSecurityTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openGatewayTab(wrapper: ReturnType<typeof mountView>) {
+  const gatewayTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.gateway"));
+
+  expect(gatewayTabButton).toBeDefined();
+  await gatewayTabButton?.trigger("click");
+  await flushPromises();
+}
+
 async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   const usersTabButton = wrapper
     .findAll("button")
@@ -540,6 +605,10 @@ describe("admin SettingsView payment visible method controls", () => {
     getStreamTimeoutSettings.mockReset();
     getRectifierSettings.mockReset();
     getBetaPolicySettings.mockReset();
+    getUpstreamBillingProbeSettings.mockReset();
+    updateUpstreamBillingProbeSettings.mockReset();
+    getOllamaCloudUsageSettings.mockReset();
+    updateOllamaCloudUsageSettings.mockReset();
     getGroups.mockReset();
     listProxies.mockReset();
     getProviders.mockReset();
@@ -595,6 +664,17 @@ describe("admin SettingsView payment visible method controls", () => {
     getBetaPolicySettings.mockResolvedValue({
       rules: [],
     });
+    getUpstreamBillingProbeSettings.mockResolvedValue({
+      enabled: true,
+      interval_minutes: 30,
+    });
+    updateUpstreamBillingProbeSettings.mockImplementation(async (payload) => payload);
+    getOllamaCloudUsageSettings.mockResolvedValue({
+      enabled: false,
+      interval_minutes: 60,
+      debounce_minutes: 1,
+    });
+    updateOllamaCloudUsageSettings.mockImplementation(async (payload) => payload);
     getGroups.mockResolvedValue([]);
     listProxies.mockResolvedValue({
       items: [],
@@ -606,6 +686,60 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
+  it("submits the compact home page toggle", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    const toggle = wrapper.get('[data-testid="compact-home-toggle"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+
+    await toggle.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ compact_home_enabled: true }),
+    );
+  });
+
+  it("renders panel rate limit card and saves settings", async () => {
+    getPanelRateLimitSettings.mockClear();
+    updatePanelRateLimitSettings.mockClear();
+    getPanelRateLimitSettings.mockResolvedValue({
+      enabled: true,
+      user_rpm: 240,
+      heavy_rpm: 60,
+      exempt_admin: true,
+      public_ip_rpm: 300,
+    });
+    updatePanelRateLimitSettings.mockImplementation(async (payload) => payload);
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    expect(getPanelRateLimitSettings).toHaveBeenCalled();
+    expect(wrapper.text()).toContain("admin.settings.panelRateLimit.title");
+    expect(wrapper.text()).toContain("admin.settings.panelRateLimit.proxySafeNote");
+
+    const userRpmInput = wrapper.find('[data-testid="panel-rate-limit-user-rpm"]');
+    expect(userRpmInput.exists()).toBe(true);
+    await userRpmInput.setValue("120");
+
+    const saveButton = wrapper.find('[data-testid="panel-rate-limit-save"]');
+    expect(saveButton.exists()).toBe(true);
+    await saveButton.trigger("click");
+    await flushPromises();
+
+    expect(updatePanelRateLimitSettings).toHaveBeenCalledWith({
+      enabled: true,
+      user_rpm: 120,
+      heavy_rpm: 60,
+      exempt_admin: true,
+      public_ip_rpm: 300,
+    });
+    expect(showSuccess).toHaveBeenCalled();
+  });
+
   it("does not render legacy visible payment method controls", async () => {
     const wrapper = mountView();
 
@@ -614,6 +748,155 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(wrapper.text()).not.toContain("可见方式");
     expect(wrapper.text()).not.toContain("支付来源");
+  });
+
+  it("shows valid passkey RP configuration and persists the sign-in toggle", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const settings = wrapper.get('[data-testid="passkey-settings"]');
+    const toggle = settings.get('[data-testid="passkey-toggle"]');
+    expect(toggle.attributes("disabled")).toBeUndefined();
+    expect(settings.text()).toContain("sub3.nebula-spaces.com");
+    expect(settings.text()).toContain("https://sub3.nebula-spaces.com");
+    expect(settings.text()).not.toContain("webauthn.enabled");
+
+    await toggle.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ passkey_enabled: false }),
+    );
+  });
+
+  it("腾讯天御验证码与 Turnstile 开关互斥并保存四项配置", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const turnstileToggle = wrapper.get('[data-testid="turnstile-enabled-toggle"]');
+    const tencentToggle = wrapper.get('[data-testid="tencent-captcha-enabled-toggle"]');
+    await turnstileToggle.setValue(true);
+    expect((turnstileToggle.element as HTMLInputElement).checked).toBe(true);
+
+    await tencentToggle.setValue(true);
+    expect((turnstileToggle.element as HTMLInputElement).checked).toBe(false);
+    expect((tencentToggle.element as HTMLInputElement).checked).toBe(true);
+
+    const card = wrapper
+      .findAll(".card")
+      .find((node) => node.text().includes("admin.settings.tencentCaptcha.title"));
+    expect(card).toBeDefined();
+    expect(card!.get('a[href="https://console.cloud.tencent.com/captcha"]').exists()).toBe(true);
+    expect(card!.get('a[href="https://console.cloud.tencent.com/cam/capi"]').exists()).toBe(true);
+    expect(
+      card!.get('a[href="https://cloud.tencent.com/document/product/1110/36841"]').exists(),
+    ).toBe(true);
+    const inputs = card!.findAll("input").filter((input) => input.attributes("type") !== "checkbox");
+    await inputs[0]!.setValue("123456789");
+    await inputs[1]!.setValue("app-secret-value");
+    await inputs[2]!.setValue("cloud-secret-id-value");
+    await inputs[3]!.setValue("cloud-secret-key-value");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        turnstile_enabled: false,
+        tencent_captcha_enabled: true,
+        tencent_captcha_app_id: "123456789",
+        tencent_captcha_app_secret_key: "app-secret-value",
+        tencent_captcha_cloud_secret_id: "cloud-secret-id-value",
+        tencent_captcha_cloud_secret_key: "cloud-secret-key-value",
+      }),
+    );
+  });
+
+  it("disables passkey sign-in when the RP configuration is unavailable", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      passkey_enabled: false,
+      passkey_configured: false,
+      passkey_rp_id: "",
+      passkey_rp_origins: [],
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const settings = wrapper.get('[data-testid="passkey-settings"]');
+    expect(settings.get('[data-testid="passkey-toggle"]').attributes("disabled")).toBeDefined();
+    const status = settings.get('[data-testid="passkey-config-status"]');
+    expect(status.text()).toContain(
+      "admin.settings.security.passkeyNotConfigured",
+    );
+    expect(status.text()).toContain("webauthn.enabled");
+    expect(status.text()).toContain("webauthn.rp_id");
+    expect(status.text()).toContain("webauthn.rp_origins");
+    expect(status.text()).toContain("然后重启服务");
+  });
+
+  it("loads, edits, validates, and saves forwarded client-IP headers", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      api_key_acl_trust_forwarded_ip: false,
+      forwarded_client_ip_headers: ["cf-connecting-ip", "X-Real-IP"],
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const card = wrapper
+      .findAll(".card")
+      .find((node) => node.text().includes("admin.settings.apiKeyAcl.title"));
+    expect(card).toBeDefined();
+    const toggle = card!.get('input[type="checkbox"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    expect(card!.find('[data-testid="forwarded-client-ip-headers-input"]').exists()).toBe(false);
+
+    await toggle.setValue(true);
+    expect(card!.findAll('[data-testid="forwarded-client-ip-header-tag"]')).toHaveLength(2);
+    expect(card!.text()).toContain("Cf-Connecting-Ip");
+    expect(card!.text()).toContain("X-Real-Ip");
+    showError.mockClear();
+
+    const input = card!.get('[data-testid="forwarded-client-ip-headers-input"]');
+    await input.setValue("x-client-ip");
+    await input.trigger("keydown", { key: "Enter" });
+    await input.setValue("X-CLIENT-IP");
+    await input.trigger("keydown", { key: "Enter" });
+    await input.setValue("invalid header");
+    await input.trigger("keydown", { key: "Enter" });
+    expect(showError).toHaveBeenCalledTimes(1);
+    expect(card!.findAll('[data-testid="forwarded-client-ip-header-tag"]')).toHaveLength(3);
+
+    const realIpTag = card!
+      .findAll('[data-testid="forwarded-client-ip-header-tag"]')
+      .find((tag) => tag.text().includes("X-Real-Ip"));
+    expect(realIpTag).toBeDefined();
+    await realIpTag!.get("button").trigger("click");
+    expect(card!.text()).not.toContain("X-Real-Ip");
+
+    await toggle.setValue(false);
+    expect(card!.find('[data-testid="forwarded-client-ip-headers-input"]').exists()).toBe(false);
+    await toggle.setValue(true);
+    expect(card!.text()).toContain("X-Client-Ip");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        api_key_acl_trust_forwarded_ip: true,
+        forwarded_client_ip_headers: ["Cf-Connecting-Ip", "X-Client-Ip"],
+      }),
+    );
   });
 
   it("links payment guidance to README sections instead of removed payment docs", async () => {
@@ -846,6 +1129,65 @@ describe("admin SettingsView payment visible method controls", () => {
       "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑",
     );
     expect(wrapper.text()).not.toContain("OpenAI 高级调度器");
+  });
+
+  it("loads and saves upstream billing probe settings from the gateway tab", async () => {
+    getUpstreamBillingProbeSettings.mockResolvedValueOnce({
+      enabled: false,
+      interval_minutes: 45,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const card = wrapper.get('[data-testid="upstream-billing-probe-settings"]');
+    expect(card.isVisible()).toBe(true);
+    expect(card.text()).toContain("上游倍率自动探测");
+    expect(
+      (card.get('[data-testid="upstream-billing-probe-enabled"]').element as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(card.find('[data-testid="upstream-billing-probe-interval"]').exists()).toBe(false);
+
+    await card.get('[data-testid="upstream-billing-probe-enabled"]').setValue(true);
+    await card.get('[data-testid="upstream-billing-probe-interval"]').setValue(60);
+    await card.get('[data-testid="upstream-billing-probe-save"]').trigger("click");
+    await flushPromises();
+
+    expect(updateUpstreamBillingProbeSettings).toHaveBeenCalledWith({
+      enabled: true,
+      interval_minutes: 60,
+    });
+    expect(showSuccess).toHaveBeenCalledWith("上游倍率自动探测设置已保存");
+  });
+
+  it("loads fail-safe-off Ollama Cloud usage refresh settings and saves an explicit opt-in", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const card = wrapper.get('[data-testid="ollama-cloud-usage-global-settings"]');
+    expect(card.isVisible()).toBe(true);
+    expect(
+      (card.get('[data-testid="ollama-cloud-usage-global-enabled"]').element as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(card.find('[data-testid="ollama-cloud-usage-global-interval"]').exists()).toBe(false);
+
+    await card.get('[data-testid="ollama-cloud-usage-global-enabled"]').setValue(true);
+    await card.get('[data-testid="ollama-cloud-usage-global-debounce"]').setValue(3);
+    await card.get('[data-testid="ollama-cloud-usage-global-interval"]').setValue(90);
+    await card.get('[data-testid="ollama-cloud-usage-global-save"]').trigger("click");
+    await flushPromises();
+
+    expect(updateOllamaCloudUsageSettings).toHaveBeenCalledWith({
+      enabled: true,
+      interval_minutes: 90,
+      debounce_minutes: 3,
+    });
   });
 
   it("places and explains rate controls for both scheduling modes", async () => {
